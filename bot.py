@@ -33,6 +33,12 @@ IMAGE_URL = "https://i.ibb.co/W4SpQX1C/IMG-20260521-090418-265.jpg"
 POINTS_PER_REFERRAL = 20
 MINIMUM_WITHDRAW = 100
 
+# ================= GLOBAL MODES =================
+
+BROADCAST_MODE = False
+BAN_MODE = False
+GIFT_MODE = False
+
 # ================= DATABASE =================
 
 db = sqlite3.connect(
@@ -64,6 +70,26 @@ CREATE TABLE IF NOT EXISTS withdraws (
 """)
 
 db.commit()
+
+# ================= CHECK BANNED =================
+
+async def is_banned(user_id):
+
+    cursor.execute(
+        """
+        SELECT banned
+        FROM users
+        WHERE user_id=?
+        """,
+        (user_id,)
+    )
+
+    data = cursor.fetchone()
+
+    if data and data[0] == 1:
+        return True
+
+    return False
 
 # ================= JOIN BUTTONS =================
 
@@ -192,18 +218,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
 
-    cursor.execute(
-        "SELECT banned FROM users WHERE user_id=?",
-        (user_id,)
-    )
-
-    banned = cursor.fetchone()
-
-    if banned and banned[0] == 1:
+    if await is_banned(user_id):
         return
 
     cursor.execute(
-        "SELECT * FROM users WHERE user_id=?",
+        """
+        SELECT *
+        FROM users
+        WHERE user_id=?
+        """,
         (user_id,)
     )
 
@@ -227,7 +250,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         cursor.execute(
             """
-            INSERT INTO users
+            INSERT OR IGNORE INTO users
             (user_id, invited_by)
             VALUES (?, ?)
             """,
@@ -251,10 +274,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ➊ Join Both Channels
 ➋ Click Joined
 ➌ Unlock Rewards
-
-━━━━━━━━━━━━━━
-
-💎 Verify Below
 """
 
     await context.bot.send_photo(
@@ -273,6 +292,9 @@ async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     user_id = query.from_user.id
+
+    if await is_banned(user_id):
+        return
 
     joined1 = await check_join(
         context.bot,
@@ -312,8 +334,6 @@ async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 (user_id,)
             )
 
-            # ================= REFERRAL =================
-
             if invited_by:
 
                 cursor.execute(
@@ -352,16 +372,11 @@ async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ✅ VERIFICATION SUCCESSFUL
 
 💎 Reward Access Unlocked
-🔥 Welcome User
 """
         )
 
         await query.message.reply_text(
-            """
-🏠 MAIN MENU
-
-Choose Option Below
-""",
+            "🏠 MAIN MENU",
             reply_markup=bottom_menu()
         )
 
@@ -369,10 +384,7 @@ Choose Option Below
 
         await query.edit_message_caption(
             caption="""
-❌ VERIFICATION FAILED
-
-⚠️ Join Both Channels First
-Then Click Joined Again
+❌ JOIN BOTH CHANNELS FIRST
 """,
             reply_markup=join_buttons(),
         )
@@ -381,9 +393,134 @@ Then Click Joined Again
 
 async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
+    global BROADCAST_MODE
+    global BAN_MODE
+    global GIFT_MODE
+
     user_id = update.effective_user.id
 
+    if await is_banned(user_id):
+        return
+
     text = update.message.text
+
+    # ================= BROADCAST =================
+
+    if BROADCAST_MODE and user_id == ADMIN_ID:
+
+        cursor.execute(
+            "SELECT user_id FROM users"
+        )
+
+        users = cursor.fetchall()
+
+        success = 0
+
+        for user in users:
+
+            try:
+
+                await context.bot.send_message(
+                    user[0],
+                    text
+                )
+
+                success += 1
+
+            except:
+                pass
+
+        await update.message.reply_text(
+            f"✅ Broadcast Sent To {success} Users"
+        )
+
+        BROADCAST_MODE = False
+
+        return
+
+    # ================= BAN =================
+
+    if BAN_MODE and user_id == ADMIN_ID:
+
+        try:
+
+            target = int(text)
+
+            cursor.execute(
+                """
+                UPDATE users
+                SET banned=1
+                WHERE user_id=?
+                """,
+                (target,)
+            )
+
+            db.commit()
+
+            try:
+
+                await context.bot.send_message(
+                    target,
+                    """
+🚫 YOU ARE BANNED
+
+Reason:
+Spam Referral Activity
+"""
+                )
+
+            except:
+                pass
+
+            await update.message.reply_text(
+                "✅ User Banned Successfully"
+            )
+
+        except:
+
+            await update.message.reply_text(
+                "❌ Invalid User ID"
+            )
+
+        BAN_MODE = False
+
+        return
+
+    # ================= GIFT =================
+
+    if GIFT_MODE and user_id == ADMIN_ID:
+
+        try:
+
+            split = text.split()
+
+            target = int(split[0])
+
+            code = split[1]
+
+            await context.bot.send_message(
+                target,
+                f"""
+🎁 YOUR GIFT CODE
+
+`{code}`
+""",
+                parse_mode="Markdown"
+            )
+
+            await update.message.reply_text(
+                "✅ Gift Code Sent"
+            )
+
+        except:
+
+            await update.message.reply_text(
+                "❌ Invalid Format"
+            )
+
+        GIFT_MODE = False
+
+        return
 
     # ================= WALLET =================
 
@@ -391,7 +528,7 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         cursor.execute(
             """
-            SELECT referrals, points
+            SELECT points, referrals
             FROM users
             WHERE user_id=?
             """,
@@ -408,8 +545,8 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             return
 
-        referrals = data[0] or 0
-        points = data[1] or 0
+        points = data[0] or 0
+        referrals = data[1] or 0
 
         await update.message.reply_text(
             f"""
@@ -418,23 +555,8 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
 👥 Referrals: {referrals}
 ⭐ Points: {points}
 
-🎁 Per Referral:
-{POINTS_PER_REFERRAL} Points
-
-💎 Minimum Withdraw:
-{MINIMUM_WITHDRAW} Points
-"""
-        )
-
-    # ================= GIFT =================
-
-    elif text == "🎁 Gift Code":
-
-        await update.message.reply_text(
-            """
-🎁 GIFT CODE PANEL
-
-Codes Will Be Sent By Admin
+🎁 Per Referral: {POINTS_PER_REFERRAL}
+💎 Minimum Withdraw: {MINIMUM_WITHDRAW}
 """
         )
 
@@ -446,7 +568,7 @@ Codes Will Be Sent By Admin
 
         cursor.execute(
             """
-            SELECT referrals, points
+            SELECT points, referrals
             FROM users
             WHERE user_id=?
             """,
@@ -455,8 +577,8 @@ Codes Will Be Sent By Admin
 
         data = cursor.fetchone()
 
-        referrals = data[0] if data else 0
-        points = data[1] if data else 0
+        points = data[0] if data else 0
+        referrals = data[1] if data else 0
 
         await update.message.reply_text(
             f"""
@@ -466,8 +588,6 @@ Codes Will Be Sent By Admin
 
 👤 Referrals: {referrals}
 ⭐ Points: {points}
-
-🎁 Earn {POINTS_PER_REFERRAL} Points Per Referral
 """
         )
 
@@ -483,10 +603,39 @@ Codes Will Be Sent By Admin
 
     elif text == "🏠 Home":
 
+        caption = """
+💎 FREE PLAY STORE REDEEM CODES
+
+🔥 Daily Premium Rewards
+⚡ Instant Withdraw System
+📈 Trusted Reward Community
+
+━━━━━━━━━━━━━━
+
+🎁 Available Rewards:
+
+• Play Store Codes
+• Premium Gift Codes
+• Daily Giveaway Access
+• Referral Rewards
+
+━━━━━━━━━━━━━━
+
+👥 Invite Friends & Earn More
+"""
+
         await update.message.reply_photo(
             photo=IMAGE_URL,
-            caption="💎 FREE REWARD HOME PANEL",
+            caption=caption,
             reply_markup=bottom_menu()
+        )
+
+    # ================= GIFT =================
+
+    elif text == "🎁 Gift Code":
+
+        await update.message.reply_text(
+            "🎁 Gift Codes Will Be Sent By Admin"
         )
 
     # ================= WITHDRAW =================
@@ -509,11 +658,7 @@ Codes Will Be Sent By Admin
         if points < MINIMUM_WITHDRAW:
 
             await update.message.reply_text(
-                f"""
-❌ Withdraw Failed
-
-Need {MINIMUM_WITHDRAW} Points
-"""
+                f"❌ Need {MINIMUM_WITHDRAW} Points"
             )
 
             return
@@ -592,103 +737,6 @@ Need {MINIMUM_WITHDRAW} Points
 """
         )
 
-    # ================= GIFT CODE SEND =================
-
-    elif context.user_data.get("giftcode"):
-
-        try:
-
-            split = text.split()
-
-            target = int(split[0])
-
-            code = split[1]
-
-            await context.bot.send_message(
-                target,
-                f"""
-🎁 YOUR GIFT CODE
-
-`{code}`
-""",
-                parse_mode="Markdown"
-            )
-
-            await update.message.reply_text(
-                "✅ Gift Code Sent"
-            )
-
-        except:
-
-            await update.message.reply_text(
-                "❌ Invalid Format"
-            )
-
-        context.user_data["giftcode"] = False
-
-    # ================= BROADCAST =================
-
-    elif context.user_data.get("broadcast"):
-
-        cursor.execute(
-            "SELECT user_id FROM users"
-        )
-
-        users = cursor.fetchall()
-
-        success = 0
-
-        for user in users:
-
-            try:
-
-                await context.bot.send_message(
-                    user[0],
-                    text
-                )
-
-                success += 1
-
-            except:
-                pass
-
-        await update.message.reply_text(
-            f"✅ Sent To {success} Users"
-        )
-
-        context.user_data["broadcast"] = False
-
-    # ================= BAN USER =================
-
-    elif context.user_data.get("banuser"):
-
-        try:
-
-            target = int(text)
-
-            cursor.execute(
-                """
-                UPDATE users
-                SET banned=1
-                WHERE user_id=?
-                """,
-                (target,)
-            )
-
-            db.commit()
-
-            await update.message.reply_text(
-                "✅ User Banned"
-            )
-
-        except:
-
-            await update.message.reply_text(
-                "❌ Invalid User ID"
-            )
-
-        context.user_data["banuser"] = False
-
 # ================= ADMIN =================
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -728,14 +776,16 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
+    global BROADCAST_MODE
+    global BAN_MODE
+    global GIFT_MODE
+
     query = update.callback_query
 
     if query.from_user.id != ADMIN_ID:
         return
 
     await query.answer()
-
-    # ================= USERS =================
 
     if query.data == "users":
 
@@ -748,8 +798,6 @@ async def admin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(
             f"👥 TOTAL USERS: {users}"
         )
-
-    # ================= WITHDRAWS =================
 
     elif query.data == "withdraws":
 
@@ -786,31 +834,25 @@ async def admin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.message.reply_text(text)
 
-    # ================= GIFT CODE =================
-
     elif query.data == "giftcode":
 
-        context.user_data["giftcode"] = True
+        GIFT_MODE = True
 
         await query.message.reply_text(
-            "🎁 SEND:\n\nuser_id code"
+            "🎁 Send:\n\nuser_id code"
         )
-
-    # ================= BROADCAST =================
 
     elif query.data == "broadcast":
 
-        context.user_data["broadcast"] = True
+        BROADCAST_MODE = True
 
         await query.message.reply_text(
             "📢 Send Broadcast Message"
         )
 
-    # ================= BAN USER =================
-
     elif query.data == "banuser":
 
-        context.user_data["banuser"] = True
+        BAN_MODE = True
 
         await query.message.reply_text(
             "🚫 Send User ID"
