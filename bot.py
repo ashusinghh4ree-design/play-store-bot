@@ -26,7 +26,7 @@ ADMIN_ID = 8575787439
 BOT_USERNAME = "FreeRedeemCodez1Robot"
 
 CHANNEL_1 = -1002490723980
-CHANNEL_2 = -1003599814306
+CHANNEL_2 = -1003966757231
 
 IMAGE_URL = "https://i.ibb.co/W4SpQX1C/IMG-20260521-090418-265.jpg"
 
@@ -107,7 +107,7 @@ def join_buttons():
         [
             InlineKeyboardButton(
                 "📢 JOIN CHANNEL 2",
-                url="https://t.me/+f1s1iq_weZk5OGRl",
+                url="https://t.me/+jffhA1j_j4ZjMzJl",
             )
         ],
 
