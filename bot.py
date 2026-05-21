@@ -122,7 +122,7 @@ def bottom_menu():
         resize_keyboard=True
     )
 
-# ================= ADMIN PANEL =================
+# ================= ADMIN BUTTONS =================
 
 def admin_buttons():
 
@@ -215,7 +215,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         try:
             referrer = int(context.args[0])
-
         except:
             pass
 
@@ -241,11 +240,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.commit()
 
     caption = """
-<tg-emoji emoji-id="6071314612270141504">💎</tg-emoji> <b>FREE PLAY STORE CODES</b>
+💎 FREE PLAY STORE CODES
 
-<tg-emoji emoji-id="6070966926077596386">🔥</tg-emoji> Premium Rewards
-<tg-emoji emoji-id="6073141291925902314">⚡</tg-emoji> Instant Verification
-<tg-emoji emoji-id="6071028722067051200">📈</tg-emoji> Daily Giveaways
+🔥 Premium Rewards
+⚡ Instant Verification
+📈 Daily Giveaways
 
 ━━━━━━━━━━━━━━
 
@@ -255,14 +254,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ━━━━━━━━━━━━━━
 
-<tg-emoji emoji-id="6071314612270141504">💎</tg-emoji> Verify Below
+💎 Verify Below
 """
 
     await context.bot.send_photo(
         chat_id=user_id,
         photo=IMAGE_URL,
         caption=caption,
-        parse_mode="HTML",
         reply_markup=join_buttons(),
     )
 
@@ -314,6 +312,8 @@ async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 (user_id,)
             )
 
+            # ================= REFERRAL =================
+
             if invited_by:
 
                 cursor.execute(
@@ -329,6 +329,22 @@ async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 )
 
+                try:
+
+                    await context.bot.send_message(
+                        invited_by,
+                        f"""
+🎉 NEW REFERRAL COMPLETED
+
+👤 User ID: {user_id}
+
+💰 +{POINTS_PER_REFERRAL} Points Added
+"""
+                    )
+
+                except:
+                    pass
+
             db.commit()
 
         await query.edit_message_caption(
@@ -336,11 +352,16 @@ async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ✅ VERIFICATION SUCCESSFUL
 
 💎 Reward Access Unlocked
+🔥 Welcome User
 """
         )
 
         await query.message.reply_text(
-            "🏠 MAIN MENU",
+            """
+🏠 MAIN MENU
+
+Choose Option Below
+""",
             reply_markup=bottom_menu()
         )
 
@@ -348,7 +369,10 @@ async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_caption(
             caption="""
-❌ JOIN BOTH CHANNELS FIRST
+❌ VERIFICATION FAILED
+
+⚠️ Join Both Channels First
+Then Click Joined Again
 """,
             reply_markup=join_buttons(),
         )
@@ -376,8 +400,16 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         data = cursor.fetchone()
 
-        referrals = data[0]
-        points = data[1]
+        if not data:
+
+            await update.message.reply_text(
+                "❌ Use /start First"
+            )
+
+            return
+
+        referrals = data[0] or 0
+        points = data[1] or 0
 
         await update.message.reply_text(
             f"""
@@ -386,8 +418,11 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
 👥 Referrals: {referrals}
 ⭐ Points: {points}
 
-🎁 1 Referral = {POINTS_PER_REFERRAL} Points
-💎 Minimum Withdraw = {MINIMUM_WITHDRAW}
+🎁 Per Referral:
+{POINTS_PER_REFERRAL} Points
+
+💎 Minimum Withdraw:
+{MINIMUM_WITHDRAW} Points
 """
         )
 
@@ -399,8 +434,7 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """
 🎁 GIFT CODE PANEL
 
-Redeem codes will appear here
-after admin approval.
+Codes Will Be Sent By Admin
 """
         )
 
@@ -410,11 +444,28 @@ after admin approval.
 
         link = f"https://t.me/{BOT_USERNAME}?start={user_id}"
 
+        cursor.execute(
+            """
+            SELECT referrals, points
+            FROM users
+            WHERE user_id=?
+            """,
+            (user_id,)
+        )
+
+        data = cursor.fetchone()
+
+        referrals = data[0] if data else 0
+        points = data[1] if data else 0
+
         await update.message.reply_text(
             f"""
 👥 YOUR REFERRAL LINK
 
 {link}
+
+👤 Referrals: {referrals}
+⭐ Points: {points}
 
 🎁 Earn {POINTS_PER_REFERRAL} Points Per Referral
 """
@@ -434,7 +485,7 @@ after admin approval.
 
         await update.message.reply_photo(
             photo=IMAGE_URL,
-            caption="🏠 HOME PANEL",
+            caption="💎 FREE REWARD HOME PANEL",
             reply_markup=bottom_menu()
         )
 
@@ -451,12 +502,18 @@ after admin approval.
             (user_id,)
         )
 
-        points = cursor.fetchone()[0]
+        data = cursor.fetchone()
+
+        points = data[0] if data else 0
 
         if points < MINIMUM_WITHDRAW:
 
             await update.message.reply_text(
-                f"❌ Need {MINIMUM_WITHDRAW} Points"
+                f"""
+❌ Withdraw Failed
+
+Need {MINIMUM_WITHDRAW} Points
+"""
             )
 
             return
@@ -464,7 +521,7 @@ after admin approval.
         context.user_data["withdraw"] = True
 
         await update.message.reply_text(
-            "📧 SEND YOUR GMAIL"
+            "📧 Send Gmail Address"
         )
 
     # ================= WITHDRAW GMAIL =================
@@ -479,7 +536,7 @@ after admin approval.
         context.user_data["username"] = True
 
         await update.message.reply_text(
-            "👤 SEND TELEGRAM USERNAME"
+            "👤 Send Telegram Username"
         )
 
     # ================= WITHDRAW USERNAME =================
@@ -521,17 +578,17 @@ after admin approval.
         context.user_data["username"] = False
 
         await update.message.reply_text(
-            "✅ WITHDRAW REQUEST SENT"
+            "✅ Withdraw Request Submitted"
         )
 
         await context.bot.send_message(
             ADMIN_ID,
             f"""
-🚨 NEW WITHDRAW
+🚨 NEW WITHDRAW REQUEST
 
-👤 USER: {user_id}
-📧 GMAIL: {gmail}
-🔗 USERNAME: {username}
+👤 User ID: {user_id}
+📧 Gmail: {gmail}
+🔗 Username: {username}
 """
         )
 
@@ -558,13 +615,13 @@ after admin approval.
             )
 
             await update.message.reply_text(
-                "✅ CODE SENT"
+                "✅ Gift Code Sent"
             )
 
         except:
 
             await update.message.reply_text(
-                "❌ INVALID FORMAT"
+                "❌ Invalid Format"
             )
 
         context.user_data["giftcode"] = False
@@ -596,7 +653,7 @@ after admin approval.
                 pass
 
         await update.message.reply_text(
-            f"✅ SENT TO {success} USERS"
+            f"✅ Sent To {success} Users"
         )
 
         context.user_data["broadcast"] = False
@@ -621,13 +678,13 @@ after admin approval.
             db.commit()
 
             await update.message.reply_text(
-                "✅ USER BANNED"
+                "✅ User Banned"
             )
 
         except:
 
             await update.message.reply_text(
-                "❌ INVALID USER ID"
+                "❌ Invalid User ID"
             )
 
         context.user_data["banuser"] = False
@@ -709,7 +766,7 @@ async def admin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not data:
 
             await query.message.reply_text(
-                "❌ NO PENDING WITHDRAWS"
+                "❌ No Pending Withdraws"
             )
 
             return
@@ -746,7 +803,7 @@ async def admin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["broadcast"] = True
 
         await query.message.reply_text(
-            "📢 SEND MESSAGE"
+            "📢 Send Broadcast Message"
         )
 
     # ================= BAN USER =================
@@ -756,7 +813,7 @@ async def admin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["banuser"] = True
 
         await query.message.reply_text(
-            "🚫 SEND USER ID"
+            "🚫 Send User ID"
         )
 
 # ================= MAIN =================
